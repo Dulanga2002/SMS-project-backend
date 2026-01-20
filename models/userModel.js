@@ -1,72 +1,42 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
+  clerkUserId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+
   name: {
     type: String,
-    required: [true, 'Please add a name'],
-    trim: true,
-    maxlength: [50, 'Name cannot be more than 50 characters']
+    required: true
   },
+
   email: {
     type: String,
-    required: [true, 'Please add an email'],
-    unique: true,
-    match: [
-      /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-      'Please add a valid email'
-    ]
+    required: true,
+    unique: true
   },
-  password: {
-    type: String,
-    required: [true, 'Please add a password'],
-    minlength: [6, 'Password must be at least 6 characters'],
-    select: false
-  },
+
   role: {
     type: String,
-    enum: ['customer', 'staff', 'admin'],
-    default: 'customer'
+    enum: ["customer", "staff", "admin"],
+    default: "customer"
   },
-  phone: {
-    type: String,
-    maxlength: [20, 'Phone number cannot be longer than 20 characters']
-  },
-  // Staff-specific fields
+
+  phone: String,
+
   specialization: {
     type: String,
-    // Only required if role is staff
-    required: function() {
-      return this.role === 'staff';
+    required: function () {
+      return this.role === "staff";
     }
   },
+
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
 
-// Encrypt password using bcrypt
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) {
-    next();
-  }
-
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-});
-
-// Sign JWT and return
-userSchema.methods.getSignedJwtToken = function() {
-  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
-  });
-};
-
-// Match user entered password to hashed password in database
-userSchema.methods.matchPassword = async function(enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
-};
-
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model("User", userSchema);

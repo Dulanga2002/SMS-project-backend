@@ -19,6 +19,8 @@
   "author": "R.M.D.N.Bandara",
   "license": "ISC",
   "dependencies": {
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/express": "^1.7.63",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -29,7 +31,7 @@
     "validator": "^13.11.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.1.11"
   },
   "type": "commonjs"
 }
