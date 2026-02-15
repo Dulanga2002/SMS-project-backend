@@ -138,7 +138,7 @@ router.get("/getAllAppointments", async (req, res) => {
 // create new appointment from customer
 router.post("/create", async (req, res) => {
   try {
-
+    
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error creating appointment', error });

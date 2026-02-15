@@ -70,14 +70,5 @@ const newAppointmentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Prevent double booking per staff & time
-newAppointmentSchema.index(
-  {
-    'staff.staffId': 1,
-    appointmentDate: 1,
-    'appointmentTime.startTime': 1
-  },
-  { unique: true }
-);
 
-module.exports = mongoose.model('Appointment', newAppointmentSchema);
+module.exports = mongoose.model('newAppointment', newAppointmentSchema);
