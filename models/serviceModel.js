@@ -19,11 +19,6 @@ const serviceSchema = new mongoose.Schema({
   duration: {
     type: Number,
     required: true
-  },
-
-  assignedUsers: {
-    type: [String],
-    default: []
   }
 
 });

@@ -58,6 +58,35 @@ const createNewAppointment = async (req, res) => {
   }
 };
 
+const getAllAppointments = async (req, res) => {
+  try {
+    const appointments = await Appointment.find()
+      .sort({ appointmentDate: -1, appointmentTime: -1 })
+      .lean();
+
+    if (!appointments || appointments.length === 0) {
+      return res.status(200).json({
+        message: "No appointments found",
+        appointments: [],
+        count: 0,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Appointments retrieved successfully",
+      appointments,
+      count: appointments.length,
+    });
+  } catch (error) {
+    console.error("Get all appointments error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createNewAppointment,
+  getAllAppointments,
 };
