@@ -1,4 +1,5 @@
 const Appointment = require("../models/newAppointmentModel");
+const Available = require("../models/availableModel");
 
 const createNewAppointment = async (req, res) => {
   try {
@@ -11,6 +12,15 @@ const createNewAppointment = async (req, res) => {
       description,
       totalCost,
     } = req.body;
+
+    const clerkUserId = req.auth?.userId;
+    if (!clerkUserId) {
+      return res.status(400).json({ message: "Token not recived" });
+    }
+
+    if (customer?.customerId && customer.customerId !== clerkUserId) {
+      return res.status(403).json({ message: "Customer token mismatch" });
+    }
 
     if (
       !customer?.customerId ||
@@ -29,7 +39,10 @@ const createNewAppointment = async (req, res) => {
     }
 
     const newAppointment = new Appointment({
-      customer,
+      customer: {
+        ...customer,
+        customerId: customer?.customerId || clerkUserId,
+      },
       staff,
       services,
       appointmentDate,
@@ -39,6 +52,22 @@ const createNewAppointment = async (req, res) => {
     });
 
     await newAppointment.save();
+
+    if (staff?.staffId) {
+      const dateKey = new Date(appointmentDate).toISOString().split("T")[0];
+      await Available.findOneAndUpdate(
+        { staffUserId: staff.staffId },
+        {
+          $push: {
+            assignedSlotes: {
+              date: dateKey,
+              time: appointmentTime,
+            },
+          },
+        },
+        { upsert: true, new: true },
+      );
+    }
 
     return res.status(201).json({
       message: "Appointment created successfully",
@@ -86,7 +115,37 @@ const getAllAppointments = async (req, res) => {
   }
 };
 
+const getAssignedSlots = async (req, res) => {
+  try {
+    const { staffUserId, date } = req.query;
+    console.log("Get assigned slots request:", { staffUserId, date });
+    if (!staffUserId) {
+      return res.status(400).json({ message: "staffUserId is required" });
+    }
+
+    const availability = await Available.findOne({ staffUserId }).lean();
+    const assignedSlotes = availability?.assignedSlotes || [];
+    const filteredSlots = date
+      ? assignedSlotes.filter((slot) => slot.date === date)
+      : assignedSlotes;
+
+    console.log("Filtered assigned slots:", filteredSlots);
+    return res.status(200).json({
+      staffUserId,
+      assignedSlotes: filteredSlots,
+      count: filteredSlots.length,
+    });
+  } catch (error) {
+    console.error("Get assigned slots error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createNewAppointment,
   getAllAppointments,
+  getAssignedSlots,
 };
