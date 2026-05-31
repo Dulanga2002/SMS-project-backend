@@ -117,26 +117,123 @@ const getAllAppointments = async (req, res) => {
 
 const getAssignedSlots = async (req, res) => {
   try {
-    const { staffUserId, date } = req.query;
-    console.log("Get assigned slots request:", { staffUserId, date });
-    if (!staffUserId) {
-      return res.status(400).json({ message: "staffUserId is required" });
+    const clerkUserId = req.auth?.userId;
+    if (!clerkUserId) {
+      return res.status(400).json({ message: "Token not received" });
     }
 
-    const availability = await Available.findOne({ staffUserId }).lean();
+    const availability = await Available.findOne({ staffUserId: clerkUserId }).lean();
     const assignedSlotes = availability?.assignedSlotes || [];
-    const filteredSlots = date
-      ? assignedSlotes.filter((slot) => slot.date === date)
-      : assignedSlotes;
 
-    console.log("Filtered assigned slots:", filteredSlots);
+    console.log("Assigned slots:", assignedSlotes);
     return res.status(200).json({
-      staffUserId,
-      assignedSlotes: filteredSlots,
-      count: filteredSlots.length,
+      staffUserId: clerkUserId,
+      assignedSlotes: assignedSlotes,
+      count: assignedSlotes.length,
     });
   } catch (error) {
     console.error("Get assigned slots error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+const markStaffSlotUnavailable = async (req, res) => {
+  try {
+    const clerkUserId = req.auth?.userId;
+    const { appointmentDate, appointmentTime } = req.body;
+
+    if (!clerkUserId) {
+      return res.status(400).json({ message: "Token not recived" });
+    }
+
+    if (!appointmentDate || !appointmentTime) {
+      return res.status(400).json({
+        message: "appointmentDate and appointmentTime are required",
+      });
+    }
+
+    const dateKey = new Date(appointmentDate).toISOString().split("T")[0];
+
+    const availability = await Available.findOneAndUpdate(
+      { staffUserId: clerkUserId },
+      {
+        $addToSet: {
+          assignedSlotes: {
+            date: dateKey,
+            time: appointmentTime,
+          },
+        },
+      },
+      { upsert: true, new: true },
+    );
+
+    return res.status(200).json({
+      message: "Staff slot marked as unavailable",
+      staffUserId: clerkUserId,
+      assignedSlotes: availability.assignedSlotes,
+    });
+  } catch (error) {
+    console.error("Mark staff slot unavailable error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+const removeStaffSlotUnavailable = async (req, res) => {
+  try {
+    const clerkUserId = req.auth?.userId;
+    const { appointmentDate, appointmentTime } = req.body;
+
+    if (!clerkUserId) {
+      return res.status(400).json({ message: "Token not recived" });
+    }
+
+    if (!appointmentDate || !appointmentTime) {
+      return res.status(400).json({
+        message: "appointmentDate and appointmentTime are required",
+      });
+    }
+
+    const dateKey = new Date(appointmentDate).toISOString().split("T")[0];
+
+    const availability = await Available.findOne({ staffUserId: clerkUserId });
+    if (!availability) {
+      return res.status(404).json({ message: "No availability record found" });
+    }
+
+    const slotExists = availability.assignedSlotes?.some(
+      (slot) => slot.date === dateKey && slot.time === appointmentTime,
+    );
+
+    if (!slotExists) {
+      return res.status(404).json({ message: "Time slot not found" });
+    }
+
+    const updatedAvailability = await Available.findOneAndUpdate(
+      { staffUserId: clerkUserId },
+      {
+        $pull: {
+          assignedSlotes: {
+            date: dateKey,
+            time: appointmentTime,
+          },
+        },
+      },
+      { new: true },
+    );
+
+    return res.status(200).json({
+      message: "Staff unavailable slot removed successfully",
+      staffUserId: clerkUserId,
+      assignedSlotes: updatedAvailability?.assignedSlotes || [],
+    });
+  } catch (error) {
+    console.error("Remove staff slot unavailable error:", error);
     return res.status(500).json({
       message: "Server error",
       error: error.message,
@@ -148,4 +245,6 @@ module.exports = {
   createNewAppointment,
   getAllAppointments,
   getAssignedSlots,
+  markStaffSlotUnavailable,
+  removeStaffSlotUnavailable,
 };

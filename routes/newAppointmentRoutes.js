@@ -4,13 +4,17 @@ const {
   createNewAppointment,
   getAllAppointments,
   getAssignedSlots,
+  markStaffSlotUnavailable,
+  removeStaffSlotUnavailable,
 } = require("../controllers/newAppointmentController");
 const Appointment = require("../models/newAppointmentModel");
 const clerkAuth = require("../middlewear/clerkAuth");
 
 router.post("/", clerkAuth, createNewAppointment);
 router.get("/", getAllAppointments);
-router.get("/assigned-slots", getAssignedSlots);
+router.get("/assigned-slots", clerkAuth, getAssignedSlots);
+router.post("/mark-unavailable", clerkAuth, markStaffSlotUnavailable);
+router.delete("/remove-unavailable", clerkAuth, removeStaffSlotUnavailable);
 
 // retrive all appointments for a specific customer
 router.get("/my-appointments", clerkAuth, async (req, res) => {
