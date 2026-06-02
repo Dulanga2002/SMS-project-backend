@@ -16,7 +16,7 @@ const newAppointmentSchema = new mongoose.Schema(
     staff: {
       staffId: {
         type: String,
-        required: true
+        required: false
       },
       staffName: {
         type: String,
