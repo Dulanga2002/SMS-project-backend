@@ -1,5 +1,8 @@
 const Appointment = require("../models/newAppointmentModel");
 const Available = require("../models/availableModel");
+const User = require("../models/userModel");
+const emailService = require("../utils/emailService");
+const { clerkClient, clerkMiddleware, getAuth } = require('@clerk/express');
 
 const createNewAppointment = async (req, res) => {
   try {
@@ -122,12 +125,19 @@ const getAssignedSlots = async (req, res) => {
       return res.status(400).json({ message: "Token not received" });
     }
 
-    const availability = await Available.findOne({ staffUserId: clerkUserId }).lean();
-    const assignedSlotes = availability?.assignedSlotes || [];
+    const targetUserId = req.query.staffUserId || clerkUserId;
 
-    console.log("Assigned slots:", assignedSlotes);
+    const availability = await Available.findOne({ staffUserId: targetUserId }).lean();
+    let assignedSlotes = availability?.assignedSlotes || [];
+
+    if (req.query.date) {
+      const dateKey = new Date(req.query.date).toISOString().split("T")[0];
+      assignedSlotes = assignedSlotes.filter(slot => slot.date === dateKey);
+    }
+
+    console.log("Assigned slots for", targetUserId, ":", assignedSlotes);
     return res.status(200).json({
-      staffUserId: clerkUserId,
+      staffUserId: targetUserId,
       assignedSlotes: assignedSlotes,
       count: assignedSlotes.length,
     });
@@ -241,10 +251,91 @@ const removeStaffSlotUnavailable = async (req, res) => {
   }
 };
 
+const deleteAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    // 1. If staff is assigned, remove the slot from staff availability
+    if (appointment.staff?.staffId) {
+      const dateKey = new Date(appointment.appointmentDate).toISOString().split("T")[0];
+      await Available.findOneAndUpdate(
+        { staffUserId: appointment.staff.staffId },
+        {
+          $pull: {
+            assignedSlotes: {
+              date: dateKey,
+              time: appointment.appointmentTime,
+            },
+          },
+        }
+      );
+    }
+
+    // optional -> get all users from cleark
+    const formatUser = (user) => {
+      return {
+        userId: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.emailAddresses[0]?.emailAddress,
+        imageUrl: user.imageUrl,
+        createdAt: user.createdAt,
+        lastSignInAt: user.lastSignInAt,
+        publicMetadata: user.publicMetadata,
+        privateMetadata: user.privateMetadata,
+        unsafeMetadata: user.unsafeMetadata
+      };
+    };
+    const users = await clerkClient.users.getUserList();
+    const formattedUsers = users.data.map(formatUser);
+
+    console.log("formattedUsers", formattedUsers);
+
+
+    // 2. Fetch customer and staff email addresses to notify them
+    let customer = formattedUsers.find(user => user.userId === appointment.customer?.customerId);
+    let staff = formattedUsers.find(user => user.userId === appointment.staff?.staffId);
+
+    const customerEmail = customer.email;
+    const staffEmail = staff.email;
+
+    console.log("customerEmail", customerEmail);
+    console.log("staffEmail", staffEmail);
+
+
+    // 3. Delete the appointment
+    await Appointment.findByIdAndDelete(id);
+
+    // 4. Send email notifications (non-blocking / error-safe)
+    try {
+      await emailService.sendAppointmentDeletionEmail(appointment, customerEmail, staffEmail);
+    } catch (emailError) {
+      console.error("Email service error:", emailError);
+      // We don't fail the response, just log the email failure.
+    }
+
+    return res.status(200).json({
+      message: "Appointment deleted successfully and notification emails sent",
+    });
+  } catch (error) {
+    console.error("Delete appointment error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createNewAppointment,
   getAllAppointments,
   getAssignedSlots,
   markStaffSlotUnavailable,
   removeStaffSlotUnavailable,
+  deleteAppointment,
 };
