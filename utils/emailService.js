@@ -11,16 +11,27 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const sendAppointmentDeletionEmail = async (appointment, customerEmail, staffEmail) => {
+const sendAppointmentDeletionEmail = async (appointment, customerEmail, staffEmail, cancelledBy = 'admin') => {
   const { customer, staff, services, appointmentDate, appointmentTime, totalCost } = appointment;
   const formattedDate = new Date(appointmentDate).toLocaleDateString();
+  const isCustomerCancelled = cancelledBy === 'customer';
+  const customerSubject = isCustomerCancelled
+    ? `Appointment Cancellation Confirmed - Aura Salon`
+    : `Appointment Cancelled - Aura Salon`;
+  const staffSubject = isCustomerCancelled
+    ? `Customer Cancelled Appointment - Aura Salon`
+    : `Appointment Cancelled - Action Required`;
+  const customerIntro = isCustomerCancelled
+    ? 'Your appointment has been cancelled successfully from your account.'
+    : 'We regret to inform you that your scheduled appointment at Aura Salon has been cancelled/deleted by the administrator.';
+  const staffIntro = isCustomerCancelled
+    ? 'The customer has cancelled the following appointment from their account.'
+    : 'Please be notified that the following appointment assigned to you has been cancelled/deleted by the administrator.';
 
   const servicesHtml = services
     .map(s => `<li><strong>${s.serviceName}</strong> - LKR ${s.serviceCost}</li>`)
     .join("");
 
-  // Customer Email HTML
-  const customerSubject = `Appointment Cancelled - Aura Salon`;
   const customerHtml = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background-color: #ffffff;">
       <div style="text-align: center; border-bottom: 2px solid #8b5cf6; padding-bottom: 20px;">
@@ -29,7 +40,7 @@ const sendAppointmentDeletionEmail = async (appointment, customerEmail, staffEma
       </div>
       <div style="padding: 20px 0;">
         <p style="font-size: 16px; color: #374151; line-height: 1.6;">Dear <strong>${customer.customerName}</strong>,</p>
-        <p style="font-size: 16px; color: #374151; line-height: 1.6;">We regret to inform you that your scheduled appointment at Aura Salon has been cancelled/deleted by the administrator.</p>
+        <p style="font-size: 16px; color: #374151; line-height: 1.6;">${customerIntro}</p>
         
         <div style="background-color: #f9fafb; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
           <h3 style="color: #111827; margin-top: 0; margin-bottom: 10px; font-size: 16px;">Appointment Details</h3>
@@ -56,8 +67,6 @@ const sendAppointmentDeletionEmail = async (appointment, customerEmail, staffEma
     </div>
   `;
 
-  // Staff Email HTML
-  const staffSubject = `Appointment Cancelled - Action Required`;
   const staffHtml = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background-color: #ffffff;">
       <div style="text-align: center; border-bottom: 2px solid #8b5cf6; padding-bottom: 20px;">
@@ -66,7 +75,7 @@ const sendAppointmentDeletionEmail = async (appointment, customerEmail, staffEma
       </div>
       <div style="padding: 20px 0;">
         <p style="font-size: 16px; color: #374151; line-height: 1.6;">Hello <strong>${staff.staffName}</strong>,</p>
-        <p style="font-size: 16px; color: #374151; line-height: 1.6;">Please be notified that the following appointment assigned to you has been cancelled/deleted by the administrator.</p>
+        <p style="font-size: 16px; color: #374151; line-height: 1.6;">${staffIntro}</p>
         
         <div style="background-color: #f9fafb; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
           <h3 style="color: #111827; margin-top: 0; margin-bottom: 10px; font-size: 16px;">Cancelled Appointment Details</h3>
@@ -83,7 +92,7 @@ const sendAppointmentDeletionEmail = async (appointment, customerEmail, staffEma
         </div>
 
         <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin-top: 30px;">
-          Your schedule has been updated automatically, and this slot is now marked as available.
+          Your schedule has been updated automatically, and this slot is now available again.
         </p>
       </div>
       <div style="text-align: center; border-top: 1px solid #e5e7eb; padding-top: 20px; color: #9ca3af; font-size: 12px;">

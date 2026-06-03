@@ -46,6 +46,8 @@ const completeExpiredAppointments = async (appointments = []) => {
   });
 };
 
+const normalizeId = (value) => (value === undefined || value === null ? '' : String(value).trim());
+
 const createNewAppointment = async (req, res) => {
   try {
     const {
@@ -296,13 +298,51 @@ const removeStaffSlotUnavailable = async (req, res) => {
   }
 };
 
+const fetchClerkUserMap = async () => {
+  const formatUser = (user) => ({
+    userId: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.emailAddresses[0]?.emailAddress,
+    imageUrl: user.imageUrl,
+    createdAt: user.createdAt,
+    lastSignInAt: user.lastSignInAt,
+    publicMetadata: user.publicMetadata,
+    privateMetadata: user.privateMetadata,
+    unsafeMetadata: user.unsafeMetadata,
+  });
+
+  const users = await clerkClient.users.getUserList();
+  return users.data.map(formatUser);
+};
+
 const deleteAppointment = async (req, res) => {
   try {
+    const clerkUserId = req.auth?.userId;
     const { id } = req.params;
 
     const appointment = await Appointment.findById(id);
     if (!appointment) {
       return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    const requester = await User.findOne({ clerkUserId });
+    const clerkUser = await clerkClient.users.getUser(clerkUserId);
+    const requesterRole =
+      requester?.role ||
+      clerkUser?.publicMetadata?.role ||
+      clerkUser?.unsafeMetadata?.role ||
+      'customer';
+
+    const appointmentOwnerId = normalizeId(
+      appointment.customer?.customerId || appointment.customerId || appointment.customer?.id || appointment.customer?.userId,
+    );
+    const currentUserId = normalizeId(clerkUserId);
+    const isOwner = appointmentOwnerId && appointmentOwnerId === currentUserId;
+    const isAdmin = requesterRole === 'admin';
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ message: "You can only delete your own appointment" });
     }
 
     // 1. If staff is assigned, remove the slot from staff availability
@@ -321,36 +361,14 @@ const deleteAppointment = async (req, res) => {
       );
     }
 
-    // optional -> get all users from cleark
-    const formatUser = (user) => {
-      return {
-        userId: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.emailAddresses[0]?.emailAddress,
-        imageUrl: user.imageUrl,
-        createdAt: user.createdAt,
-        lastSignInAt: user.lastSignInAt,
-        publicMetadata: user.publicMetadata,
-        privateMetadata: user.privateMetadata,
-        unsafeMetadata: user.unsafeMetadata
-      };
-    };
-    const users = await clerkClient.users.getUserList();
-    const formattedUsers = users.data.map(formatUser);
-
-    console.log("formattedUsers", formattedUsers);
-
+    const formattedUsers = await fetchClerkUserMap();
 
     // 2. Fetch customer and staff email addresses to notify them
-    let customer = formattedUsers.find(user => user.userId === appointment.customer?.customerId);
-    let staff = formattedUsers.find(user => user.userId === appointment.staff?.staffId);
+    const customer = formattedUsers.find(user => user.userId === appointment.customer?.customerId);
+    const staff = formattedUsers.find(user => user.userId === appointment.staff?.staffId);
 
-    const customerEmail = customer.email;
-    const staffEmail = staff.email;
-
-    console.log("customerEmail", customerEmail);
-    console.log("staffEmail", staffEmail);
+    const customerEmail = customer?.email;
+    const staffEmail = staff?.email;
 
 
     // 3. Delete the appointment
@@ -358,7 +376,7 @@ const deleteAppointment = async (req, res) => {
 
     // 4. Send email notifications (non-blocking / error-safe)
     try {
-      await emailService.sendAppointmentDeletionEmail(appointment, customerEmail, staffEmail);
+      await emailService.sendAppointmentDeletionEmail(appointment, customerEmail, staffEmail, isOwner && !isAdmin ? 'customer' : 'admin');
     } catch (emailError) {
       console.error("Email service error:", emailError);
       // We don't fail the response, just log the email failure.
