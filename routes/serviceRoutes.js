@@ -1,6 +1,8 @@
 const express = require("express");
 const Service = require("../models/serviceModel");
-const { createService } = require("../controllers/serviceController");
+const { createService, deleteService } = require("../controllers/serviceController");
+const clerkAuth = require("../middlewear/clerkAuth");
+const adminAuth = require("../middlewear/adminAuth");
 
 const router = express.Router();
 
@@ -17,5 +19,8 @@ router.get("/", async (req, res) => {
 
 // Create a new service
 router.post("/", createService);
+
+// Delete a service
+router.delete("/:id", clerkAuth, adminAuth, deleteService);
 
 module.exports = router;
