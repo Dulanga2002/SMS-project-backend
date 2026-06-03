@@ -7,6 +7,7 @@ const {
   markStaffSlotUnavailable,
   removeStaffSlotUnavailable,
   deleteAppointment,
+  completeExpiredAppointments,
 } = require("../controllers/newAppointmentController");
 const Appointment = require("../models/newAppointmentModel");
 const clerkAuth = require("../middlewear/clerkAuth");
@@ -30,22 +31,25 @@ router.get("/my-appointments", clerkAuth, async (req, res) => {
       .sort({ appointmentDate: -1, appointmentTime: -1 })
       .lean();
 
-    if (!allAppointments || allAppointments.length === 0) {
+    const normalizedAppointments = await completeExpiredAppointments(allAppointments);
+
+    if (!normalizedAppointments || normalizedAppointments.length === 0) {
       return res.status(200).json({
         message: "No appointments found",
         appointments: [],
         count: 0,
       });
     }
-    if (!allAppointments) {
-      return res.status(404).json({ message: "No appointment available!" });
-    }
     // filter the appointments using customerId
     const appointments = allAppointments.filter(
       (appointment) => appointment?.customer?.customerId === clerkUserId,
     );
 
-    return res.status(200).json(appointments);
+    const customerAppointments = normalizedAppointments.filter(
+      (appointment) => appointment?.customer?.customerId === clerkUserId,
+    );
+
+    return res.status(200).json(customerAppointments);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -64,7 +68,9 @@ router.get("/staff-appointments", clerkAuth, async (req, res) => {
       .sort({ appointmentDate: -1, appointmentTime: -1 })
       .lean();
 
-    if (!allAppointments || allAppointments.length === 0) {
+    const normalizedAppointments = await completeExpiredAppointments(allAppointments);
+
+    if (!normalizedAppointments || normalizedAppointments.length === 0) {
       return res.status(200).json({
         message: "No appointments found",
         appointments: [],
@@ -72,16 +78,12 @@ router.get("/staff-appointments", clerkAuth, async (req, res) => {
       });
     }
 
-    if (!allAppointments) {
-      return res.status(404).json({ message: "No appointment available!" });
-    }
-
     // filter the appointments using staffId
-    const appointments = allAppointments.filter(
+    const staffAppointments = normalizedAppointments.filter(
       (appointment) => appointment?.staff?.staffId === clerkUserId,
     );
 
-    return res.status(200).json(appointments);
+    return res.status(200).json(staffAppointments);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });

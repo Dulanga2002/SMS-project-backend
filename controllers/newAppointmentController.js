@@ -4,6 +4,48 @@ const User = require("../models/userModel");
 const emailService = require("../utils/emailService");
 const { clerkClient, clerkMiddleware, getAuth } = require('@clerk/express');
 
+const isExpiredAppointment = (appointment, now = new Date()) => {
+  if (!appointment?.appointmentDate) {
+    return false;
+  }
+
+  const appointmentDay = new Date(appointment.appointmentDate);
+  if (Number.isNaN(appointmentDay.getTime())) {
+    return false;
+  }
+
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  appointmentDay.setHours(0, 0, 0, 0);
+
+  return appointmentDay < todayStart;
+};
+
+const completeExpiredAppointments = async (appointments = []) => {
+  const expiredIds = appointments
+    .filter((appointment) => {
+      const status = (appointment?.status || 'pending').toLowerCase();
+      return isExpiredAppointment(appointment) && status !== 'completed' && status !== 'cancelled';
+    })
+    .map((appointment) => appointment._id)
+    .filter(Boolean);
+
+  if (expiredIds.length > 0) {
+    await Appointment.updateMany(
+      { _id: { $in: expiredIds } },
+      { $set: { status: 'completed' } },
+    );
+  }
+
+  const expiredIdSet = new Set(expiredIds.map(String));
+  return appointments.map((appointment) => {
+    if (expiredIdSet.has(String(appointment._id))) {
+      return { ...appointment, status: 'completed' };
+    }
+    return appointment;
+  });
+};
+
 const createNewAppointment = async (req, res) => {
   try {
     const {
@@ -51,6 +93,7 @@ const createNewAppointment = async (req, res) => {
       appointmentDate,
       appointmentTime,
       totalCost,
+      status: 'pending',
       description,
     });
 
@@ -96,7 +139,9 @@ const getAllAppointments = async (req, res) => {
       .sort({ appointmentDate: -1, appointmentTime: -1 })
       .lean();
 
-    if (!appointments || appointments.length === 0) {
+    const normalizedAppointments = await completeExpiredAppointments(appointments);
+
+    if (!normalizedAppointments || normalizedAppointments.length === 0) {
       return res.status(200).json({
         message: "No appointments found",
         appointments: [],
@@ -106,8 +151,8 @@ const getAllAppointments = async (req, res) => {
 
     return res.status(200).json({
       message: "Appointments retrieved successfully",
-      appointments,
-      count: appointments.length,
+      appointments: normalizedAppointments,
+      count: normalizedAppointments.length,
     });
   } catch (error) {
     console.error("Get all appointments error:", error);
@@ -338,4 +383,5 @@ module.exports = {
   markStaffSlotUnavailable,
   removeStaffSlotUnavailable,
   deleteAppointment,
+  completeExpiredAppointments,
 };
