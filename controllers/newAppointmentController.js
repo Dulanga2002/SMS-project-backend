@@ -4,21 +4,47 @@ const User = require("../models/userModel");
 const emailService = require("../utils/emailService");
 const { clerkClient, clerkMiddleware, getAuth } = require('@clerk/express');
 
+const parseAppointmentTime = (timeValue) => {
+  if (typeof timeValue !== 'string') {
+    return null;
+  }
+
+  const trimmedTime = timeValue.trim();
+  const match = trimmedTime.match(/^(\d{1,2}):(\d{2})(?:\s*([APap][Mm]))?$/);
+  if (!match) {
+    return null;
+  }
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const period = match[3]?.toUpperCase();
+
+  if (period === 'AM' && hours === 12) {
+    hours = 0;
+  } else if (period === 'PM' && hours !== 12) {
+    hours += 12;
+  }
+
+  return { hours, minutes };
+};
+
 const isExpiredAppointment = (appointment, now = new Date()) => {
-  if (!appointment?.appointmentDate) {
+  if (!appointment?.appointmentDate || !appointment?.appointmentTime) {
     return false;
   }
 
-  const appointmentDay = new Date(appointment.appointmentDate);
-  if (Number.isNaN(appointmentDay.getTime())) {
+  const scheduledDate = new Date(appointment.appointmentDate);
+  if (Number.isNaN(scheduledDate.getTime())) {
     return false;
   }
 
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  appointmentDay.setHours(0, 0, 0, 0);
+  const parsedTime = parseAppointmentTime(appointment.appointmentTime);
+  if (!parsedTime) {
+    return false;
+  }
 
-  return appointmentDay < todayStart;
+  scheduledDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+  return scheduledDate.getTime() < now.getTime();
 };
 
 const completeExpiredAppointments = async (appointments = []) => {
